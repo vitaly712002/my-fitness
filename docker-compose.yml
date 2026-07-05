@@ -1,0 +1,44 @@
+# docker-compose.yml — описание dev-инфраструктуры проекta my-fitness.
+# Поднимается одной командой:  docker compose up -d
+# В Compose v2 ключ "version:" не нужен (устарел).
+
+services:
+  # ─────────────────────────── PostgreSQL ───────────────────────────
+  postgres:
+    image: postgres:17-alpine          # готовый образ БД (alpine = лёгкий)
+    container_name: my-fitness-postgres
+    restart: unless-stopped            # поднимать при перезапуске Docker, кроме ручной остановки
+    environment:                       # переменные берутся из файла .env
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "${POSTGRES_PORT}:5432"        # хост:контейнер — снаружи доступен как localhost:5432
+    volumes:
+      - postgres_data:/var/lib/postgresql/data   # данные БД переживают пересоздание контейнера
+    healthcheck:                       # Docker проверяет, что БД реально готова принимать запросы
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ───────────────────────────── MinIO ──────────────────────────────
+  # S3-совместимое хранилище файлов (в dev заменяет облачный S3/R2).
+  minio:
+    image: minio/minio:latest
+    container_name: my-fitness-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"   # запуск сервера + веб-консоль на 9001
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    ports:
+      - "${MINIO_PORT}:9000"           # S3 API           -> localhost:9000
+      - "${MINIO_CONSOLE_PORT}:9001"   # веб-консоль MinIO -> localhost:9001
+    volumes:
+      - minio_data:/data               # загруженные файлы переживают пересоздание контейнера
+
+# Именованные тома — Docker хранит их сам, данные не привязаны к жизни контейнера.
+volumes:
+  postgres_data:
+  minio_data:
